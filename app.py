@@ -5,11 +5,45 @@ from torchvision import transforms
 from PIL import Image
 import sys
 import os
+import gdown
+
+# --------------------------------
+# Google Drive FILE IDs (REPLACE THESE)
+# --------------------------------
+CNN_ID = "1tlCT-CmEyJPVqpiE_-OlTFDFZPJ-0N0u"
+VIT_ID = "10GLkcA6K8RoZOP_QDXix3O4BxyLhNfvy"
+FUSION_ID = "1BAOzo1PmzSdOZKHV9a4Dy2xJ7nkqEAi7"
+
+# --------------------------------
+# Download weights if not present
+# --------------------------------
+def download_weights():
+
+    if not os.path.exists("cnn_mri_4class_baseline.pth"):
+        gdown.download(
+            f"https://drive.google.com/uc?id={CNN_ID}",
+            "cnn_mri_4class_baseline.pth",
+            quiet=False
+        )
+
+    if not os.path.exists("vit_mri_4class_baseline.pth"):
+        gdown.download(
+            f"https://drive.google.com/uc?id={VIT_ID}",
+            "vit_mri_4class_baseline.pth",
+            quiet=False
+        )
+
+    if not os.path.exists("fusion_model.pth"):
+        gdown.download(
+            f"https://drive.google.com/uc?id={FUSION_ID}",
+            "fusion_model.pth",
+            quiet=False
+        )
 
 # --------------------------------
 # Add fusion model path
 # --------------------------------
-sys.path.append("../deep_learning/phase5_fusion")
+sys.path.append(".")
 from fusion_model import FusionModel
 
 # --------------------------------
@@ -32,20 +66,23 @@ CLASS_NAMES = [
     "Moderate Dementia"
 ]
 
-CNN_WEIGHTS = "../deep_learning/phase5_fusion/cnn_mri_4class_baseline.pth"
-VIT_WEIGHTS = "../deep_learning/phase5_fusion/vit_mri_4class_baseline.pth"
-FUSION_WEIGHTS = "../deep_learning/phase5_fusion/fusion_model.pth"
+CNN_WEIGHTS = "cnn_mri_4class_baseline.pth"
+VIT_WEIGHTS = "vit_mri_4class_baseline.pth"
+FUSION_WEIGHTS = "fusion_model.pth"
 
 # --------------------------------
-# Device
+# FORCE CPU (Streamlit Cloud has no GPU)
 # --------------------------------
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 # --------------------------------
 # Load model (cached)
 # --------------------------------
 @st.cache_resource
 def load_model():
+
+    download_weights()  # Download before loading
+
     model = FusionModel(CNN_WEIGHTS, VIT_WEIGHTS)
     model.load_state_dict(torch.load(FUSION_WEIGHTS, map_location=device))
     model.to(device)
@@ -90,6 +127,7 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is not None:
+
     image = Image.open(uploaded_file).convert("RGB")
 
     st.image(
@@ -101,7 +139,9 @@ if uploaded_file is not None:
     st.markdown("### 🔍 Prediction")
 
     if st.button("Predict Alzheimer’s Stage"):
+
         with st.spinner("Analyzing MRI image..."):
+
             img_tensor = transform(image).unsqueeze(0).to(device)
 
             with torch.no_grad():
@@ -110,9 +150,6 @@ if uploaded_file is not None:
 
         st.success("Prediction completed successfully ✅")
 
-        # --------------------------------
-        # RESULT DISPLAY
-        # --------------------------------
         pred_idx = torch.argmax(probs).item()
         pred_label = CLASS_NAMES[pred_idx]
         confidence = probs[pred_idx].item() * 100
@@ -131,9 +168,6 @@ if uploaded_file is not None:
                 value=f"{confidence:.2f}%"
             )
 
-        # --------------------------------
-        # PROBABILITY BAR CHART
-        # --------------------------------
         st.markdown("### 📊 Class-wise Confidence")
 
         prob_dict = {
@@ -153,9 +187,6 @@ else:
 
 st.divider()
 
-# --------------------------------
-# FOOTER
-# --------------------------------
 st.caption(
     "© AlzClassNet | CNN–ViT Fusion Framework for Alzheimer’s Detection"
 )
